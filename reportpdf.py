@@ -1,4 +1,5 @@
 ﻿# -*-coding: utf-8 -*
+import logging
 from reportlab.lib.units import mm
 from reportlab.lib import colors, pagesizes
 from reportlab.pdfbase import pdfmetrics
@@ -8,6 +9,20 @@ from reportlab.lib.styles import getSampleStyleSheet
 import xlrd, datetime, os.path
 from reportlab.lib.textsplit import getCharWidths
 import pyphen, argparse, locale, sys
+
+# Настройка логгирования.
+log = logging.getLogger('main')
+log.setLevel(logging.DEBUG)
+logHandlerFile = logging.FileHandler('log.txt', mode='w')
+logHandlerFile.setLevel(logging.DEBUG)
+logHandlerStream = logging.StreamHandler()
+logHandlerStream.setLevel(logging.DEBUG)
+logFormater = logging.Formatter('%(asctime)s  [%(levelname)s]: %(message)s')
+logHandlerStream.setFormatter(logFormater)
+logHandlerFile.setFormatter(logFormater)
+log.addHandler(logHandlerFile)
+log.addHandler(logHandlerStream)
+
 
 
 # регистрация шрифтов
@@ -69,7 +84,7 @@ def parseWorkSheet(sheet):  # разбор екселевского листа
             break
         if not row[2]:  # если инвентарный номер пуст пропускаем строку, пробелы обрезаюся слева и справа при проверке
             continue
-        print "Обработка строчки %s" % row[3].encode('utf-8'), row[7].encode('utf-8')
+        log.info("Обработка строчки %s %s" % (row[3].encode('utf-8'), row[7].encode('utf-8')))
         try:
             row[0] = datetime.date(*xlrd.xldate_as_tuple(row[0], 0)[:3]).strftime('%d.%m.%y')  # форматирование даты
         except ValueError as er:
@@ -86,8 +101,8 @@ def parseWorkSheet(sheet):  # разбор екселевского листа
         numberCol = (2, 0, 3, 4, 5, 7, 17) # порядковый номер колонок в екселевском файле
         dataRow = [row[x] for x in numberCol] # строка с данными. оставляем только нужные нам колонки.
 
-        if sheet.name.lower() == u'аннулированные': # если лист называется "аннулированные"
-            dataRow.extend(("", u"Аннулир.")) # r к строке с данными добавляем в примичание "Аннулир."
+        if sheet.name.lower() == u'аннулированные':  # если лист называется "аннулированные"
+            dataRow.extend(("", u"Аннулир."))  # r к строке с данными добавляем в примичание "Аннулир."
         else:
             dataRow.extend(("", ""))
         data.append(dataRow)
@@ -101,9 +116,9 @@ def parseXLS(xlsFile):  # разбор екселевского файла
     data2 = parseWorkSheet(workbook.sheet_by_index(1))
     data1.extend(data2)
     try:
-        data1 = sorted(data1, key=lambda col: col[0]) # сортировка данных по инвентарному номеру (колонка 0)
+        data1 = sorted(data1, key=lambda col: col[0])  # сортировка данных по инвентарному номеру (колонка 0)
     except ValueError:
-        print u"ошибка в поле инв.номер"
+        log.error(u"ошибка в поле инв.номер")
         sys.exit(1)
     return data1
 
@@ -155,7 +170,7 @@ opt = parser.parse_args(sys.argv[1:])
 xlsFile = opt.input.decode(locale.getpreferredencoding())
 xlsFile = os.path.normpath(xlsFile)
 if not os.path.exists(xlsFile):
-    print u'Файл %s не найден' % xlsFile
+    log.error(u'Файл %s не найден' % xlsFile)
     sys.exit(1)
 if not opt.output:
     outputFile = os.path.splitext(xlsFile)[0].encode(locale.getpreferredencoding()) + ".pdf"
@@ -164,16 +179,16 @@ else:
 try:
     data = calcWarps(parseXLS(xlsFile), columnWidths[5] + 2*mm)  # вычисление таблицы данных
 except IOError:
-    print u'ошибка при открытии файла %s' % xlsFile
+    log.error(u'ошибка при открытии файла %s' % xlsFile)
     sys.exit(1)
 except xlrd.biffh.XLRDError:
-    print u'не правильный формат файла %s' % xlsFile
+    log.error(u'не правильный формат файла %s' % xlsFile)
     sys.exit(1)
-except ValueError:
-    print u'ошибка при разборе XLS файла'
+except ValueError as err:
+    log.error(u'ошибка при разборе XLS файла(%s)' % err)
     sys.exit(1)
 
-while len(data) % rowCount: # заполняем пустыми строками до конца страницы
+while len(data) % rowCount:  # заполняем пустыми строками до конца страницы
     data.append(9*[''])
 table = Table(data, columnWidths, 8*mm)
 table.setStyle(tabStyle)
@@ -181,7 +196,7 @@ content = []
 frame = Frame(20*mm, (pagesizes.A4[1] - rowHeight*rowCount - 18*mm)/2 + Hoffset,
               reduce(lambda x, y: x + y, columnWidths), rowCount*rowHeight,
               leftPadding=0, rightPadding=0, bottomPadding=0, topPadding=0, showBoundary=1)
-doc = BaseDocTemplate(outputFile,
+doc = BaseDocTemplate(outputFile.decode(locale.getpreferredencoding()),
                       pagesize=pagesizes.A4,
                       leftMargin=25*mm,
                       rightMargin=5*mm,
@@ -191,6 +206,6 @@ doc = BaseDocTemplate(outputFile,
 content.append(table)
 try:
     doc.build(content)
-except Exception:
-    print u'Ошибка построения PDF файла %s' % outputFile
+except Exception as err:
+    log.error(u'Ошибка построения PDF файла %s' % (err))
     sys.exit(1)
