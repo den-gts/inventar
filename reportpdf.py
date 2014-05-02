@@ -88,16 +88,12 @@ def parseWorkSheet(sheet):  # разбор екселевского листа
         try:
             row[0] = datetime.date(*xlrd.xldate_as_tuple(row[0], 0)[:3]).strftime('%d.%m.%y')  # форматирование даты
         except ValueError as er:
-            print 'Ошибка в колонке дата(%s) в строке номер %d' % (er, rownum + 1)
+            log.error('Ошибка в колонке дата(%s) в строке номер %d' % (er, rownum + 1))
             sys.exit()
         formatIndex = row[5].find('(', 0)  # обработка форматов документа.
         if formatIndex > 0:				  # если документ выполнен в разных форматах
             row[5] = row[5][:formatIndex]  # убираем скобки
-        for rowIndex in xrange(0, len(row)):  # честно не помню зачем это тут:)
-            try:
-                row[rowIndex] = str(int(row[rowIndex]))
-            except ValueError:
-                pass
+        row[4] = int(row[4])
         numberCol = (2, 0, 3, 4, 5, 7, 17) # порядковый номер колонок в екселевском файле
         dataRow = [row[x] for x in numberCol] # строка с данными. оставляем только нужные нам колонки.
 
