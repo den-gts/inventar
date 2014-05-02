@@ -63,16 +63,21 @@ def tmplPage(canvas, doc):  # шаблон страницы
 
 def parseWorkSheet(sheet):  # разбор екселевского листа
     data = []
-    for rownum in xrange(1, sheet.nrows): # цикл строк
-        row = sheet.row_values(rownum) # значение ячеек в строке
-        if not row[0]: # если дата пуста то выходим из функции
+    for rownum in xrange(1, sheet.nrows):  # цикл строк
+        row = sheet.row_values(rownum)  # значение ячеек в строке
+        if not row[0]:  # если дата пуста то выходим из функции
             break
-        if not str(row[2]).strip(): # если инвентарный номер пуст пропускаем строку, пробелы обрезаюся слева и справа при проверке
+        if not row[2]:  # если инвентарный номер пуст пропускаем строку, пробелы обрезаюся слева и справа при проверке
             continue
-        row[0] = datetime.date(*xlrd.xldate_as_tuple(row[0], 0)[:3]).strftime('%d.%m.%y')  # форматирование даты
-        formatIndex = row[5].find('(', 0) # обработка форматов документа.
+        print "Обработка строчки %s" % row[3].encode('utf-8'), row[7].encode('utf-8')
+        try:
+            row[0] = datetime.date(*xlrd.xldate_as_tuple(row[0], 0)[:3]).strftime('%d.%m.%y')  # форматирование даты
+        except ValueError as er:
+            print 'Ошибка в колонке дата(%s) в строке номер %d' % (er, rownum + 1)
+            sys.exit()
+        formatIndex = row[5].find('(', 0)  # обработка форматов документа.
         if formatIndex > 0:				  # если документ выполнен в разных форматах
-            row[5] = row[5][:formatIndex] # убираем скобки
+            row[5] = row[5][:formatIndex]  # убираем скобки
         for rowIndex in xrange(0, len(row)):  # честно не помню зачем это тут:)
             try:
                 row[rowIndex] = str(int(row[rowIndex]))
