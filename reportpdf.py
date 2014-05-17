@@ -9,6 +9,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 import xlrd, datetime, os.path
 from reportlab.lib.textsplit import getCharWidths
 import pyphen, argparse, locale, sys
+import traceback
 
 # Настройка логгирования.
 log = logging.getLogger('main')
@@ -80,11 +81,14 @@ def parseWorkSheet(sheet):  # разбор екселевского листа
     data = []
     for rownum in xrange(1, sheet.nrows):  # цикл строк
         row = sheet.row_values(rownum)  # значение ячеек в строке
-        if not row[0]:  # если дата пуста то выходим из функции
+        if not row[7]:  # если наименование пусто то выходим из функции и заканчиваем разбор файла
             break
-        if not row[2]:  # если инвентарный номер пуст пропускаем строку, пробелы обрезаюся слева и справа при проверке
+        if not unicode(row[2]).strip() or not row[0]:  # если инвентарный номер или дата пусты пропускаем строку
+            log.info("Пропуск строки '%s %s' так как инв номер или дата пусты" % (row[3].encode('utf-8'),
+                                                                                row[7].encode('utf-8')))
             continue
-        log.info("Обработка строчки %s %s" % (row[3].encode('utf-8'), row[7].encode('utf-8')))
+        log.info("Обработка строчки %s %s" % (row[3].encode('utf-8'),
+                                              row[7].encode('utf-8')))
         try:
             row[0] = datetime.date(*xlrd.xldate_as_tuple(row[0], 0)[:3]).strftime('%d.%m.%y')  # форматирование даты
         except ValueError as er:
@@ -125,7 +129,7 @@ def softWarpString(text, width): # функция переноса строки
     hypPositions = dic.positions(text)
     rowPosition = []
     rowWidth = 0
-    for charIndex in xrange(0, len(charWidths)):
+    for charIndex in xrange(len(charWidths)):
         rowWidth += charWidths[charIndex]
         if rowWidth >= width:
             rowPosition.append(charIndex)
@@ -181,6 +185,9 @@ except xlrd.biffh.XLRDError:
     log.error(u'не правильный формат файла %s' % xlsFile)
     sys.exit(1)
 except ValueError as err:
+    trace = (repr(traceback.format_exception(*sys.exc_info())))
+    for tr_row in trace.split('\\n'):
+        log.debug(tr_row)
     log.error(u'ошибка при разборе XLS файла(%s)' % err)
     sys.exit(1)
 
@@ -203,5 +210,6 @@ content.append(table)
 try:
     doc.build(content)
 except Exception as err:
-    log.error(u'Ошибка построения PDF файла %s' % (err))
+    log.debug(repr(traceback.format_exception(*sys.exc_info())))
+    log.error(u'Ошибка построения PDF файла %s' % (str(err).encode('utf-8')))
     sys.exit(1)
