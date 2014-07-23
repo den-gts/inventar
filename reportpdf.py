@@ -10,6 +10,7 @@ import xlrd, datetime, os.path
 from reportlab.lib.textsplit import getCharWidths
 import pyphen, argparse, locale, sys
 import traceback
+import codecs
 
 # Настройка логгирования.
 log = logging.getLogger('main')
@@ -49,6 +50,34 @@ tabStyle = TableStyle([  # стил таблицы в PDF
                            ])
 
 
+# переопределяем кодировку консоли
+def setup_console(sys_enc="utf-8"):
+    reload(sys)
+    try:
+        # для win32 вызываем системную библиотечную функцию
+        if sys.platform.startswith("win"):
+            import ctypes
+            enc = "cp%d" % ctypes.windll.kernel32.GetOEMCP()
+        else:
+            # для Linux всё, кажется, есть и так
+            enc = (sys.stdout.encoding if sys.stdout.isatty() else
+                        sys.stderr.encoding if sys.stderr.isatty() else
+                            sys.getfilesystemencoding() or sys_enc)
+
+        # кодировка для sys
+        sys.setdefaultencoding(sys_enc)
+
+        # переопределяем стандартные потоки вывода, если они не перенаправлены
+        if sys.stdout.isatty() and sys.stdout.encoding != enc:
+            sys.stdout = codecs.getwriter(enc)(sys.stdout, 'replace')
+
+        if sys.stderr.isatty() and sys.stderr.encoding != enc:
+            sys.stderr = codecs.getwriter(enc)(sys.stderr, 'replace')
+
+    except:
+        pass # Ошибка? Всё равно какая - работаем по-старому...
+
+
 def tmplPage(canvas, doc):  # шаблон страницы
     canvas.saveState()
 
@@ -84,15 +113,15 @@ def parseWorkSheet(sheet):  # разбор екселевского листа
         if not row[3]:  # если обозначение пусто то выходим из функции и заканчиваем разбор файла
             break
         if not unicode(row[2]).strip() or not row[0]:  # если инвентарный номер или дата пусты пропускаем строку
-            log.info("Пропуск строки '%s %s' так как инв номер или дата пусты" % (row[3].encode('utf-8'),
+            log.info(u"Пропуск строки '%s %s' так как инв номер или дата пусты" % (row[3].encode('utf-8'),
                                                                                 row[7].encode('utf-8')))
             continue
-        log.info("Обработка строчки %s %s" % (row[3].encode('utf-8'),
-                                              row[7].encode('utf-8')))
+        log.info(u"Обработка строчки %s %s" % (row[3],
+                                               row[7]))
         try:
             row[0] = datetime.date(*xlrd.xldate_as_tuple(row[0], 0)[:3]).strftime('%d.%m.%y')  # форматирование даты
         except ValueError as er:
-            log.error('Ошибка в колонке дата(%s) в строке номер %d' % (er, rownum + 1))
+            log.error(u'Ошибка в колонке дата(%s) в строке номер %d' % (er, rownum + 1))
             sys.exit()
         formatIndex = row[5].find('(', 0)  # обработка форматов документа.
         if formatIndex > 0:				  # если документ выполнен в разных форматах
@@ -163,9 +192,10 @@ def calcWarps(data, descrWidth): # вычислить перенос строк�
 
 # выполнение программы начинается отсюда
 # обработка аргументов коммандной строки.
+setup_console()
 parser = argparse.ArgumentParser()
-parser.add_argument('input', help='входной файл XLS')
-parser.add_argument('output', help='выходной файл PDF', nargs='?')
+parser.add_argument('input', help=u'входной файл XLS')
+parser.add_argument('output', help=u'выходной файл PDF', nargs='?')
 opt = parser.parse_args(sys.argv[1:])
 xlsFile = opt.input.decode(locale.getpreferredencoding())
 xlsFile = os.path.normpath(xlsFile)
@@ -173,15 +203,16 @@ if not os.path.exists(xlsFile):
     log.error(u'Файл %s не найден' % xlsFile)
     sys.exit(1)
 if not opt.output:
-    outputFile = os.path.splitext(xlsFile)[0].encode(locale.getpreferredencoding()) + ".pdf"
+    outputFile = os.path.splitext(xlsFile)[0] + ".pdf"
 else:
-    outputFile = os.path.normpath(opt.output).encode(locale.getpreferredencoding())
+    outputFile = os.path.normpath(opt.output)
 try:
     data = calcWarps(parseXLS(xlsFile), columnWidths[5] + 2*mm)  # вычисление таблицы данных
 except IOError:
     log.error(u'ошибка при открытии файла %s' % xlsFile)
     sys.exit(1)
 except xlrd.biffh.XLRDError:
+    log.debug(repr(traceback.format_exception(*sys.exc_info())))
     log.error(u'не правильный формат файла %s' % xlsFile)
     sys.exit(1)
 except ValueError as err:
@@ -199,7 +230,7 @@ content = []
 frame = Frame(20*mm, (pagesizes.A4[1] - rowHeight*rowCount - 18*mm)/2 + Hoffset,
               reduce(lambda x, y: x + y, columnWidths), rowCount*rowHeight,
               leftPadding=0, rightPadding=0, bottomPadding=0, topPadding=0, showBoundary=1)
-doc = BaseDocTemplate(outputFile.decode(locale.getpreferredencoding()),
+doc = BaseDocTemplate(outputFile,
                       pagesize=pagesizes.A4,
                       leftMargin=25*mm,
                       rightMargin=5*mm,
@@ -211,5 +242,5 @@ try:
     doc.build(content)
 except Exception as err:
     log.debug(repr(traceback.format_exception(*sys.exc_info())))
-    log.error(u'Ошибка построения PDF файла %s' % (str(err).encode('utf-8')))
+    log.error(u'Ошибка построения PDF файла %s' % (str(err)))
     sys.exit(1)
